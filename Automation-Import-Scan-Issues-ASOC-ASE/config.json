@@ -1,0 +1,40 @@
+{
+    "hostname": "http://localhost",
+    "port": "5000",
+    "log_level": "INFO",
+	"asoc_api_key": {
+		"KeyId": "<ASOC_API_KEY_ID>",
+		"KeySecret": "<ASOC_API_KEY_SECRET>"
+	},
+	"webhooks": {
+		"asoc":[
+			{
+				"name": "thirdparty",
+				"template": "discord",
+				"handler": "launcher",
+				"type": "json_post",
+				"url": "http://localhost:5000/thirdparty",
+				"PresenceId": "<APPSCAN_PRESENCE_ID>",
+				"trigger": "ScanExecutionCompleted",
+				"report_config": {
+					"Configuration": {
+						"Summary": true,
+						"Overview": true,
+						"TableOfContent": true,
+						"Advisories": true,
+						"FixRecommendation": true,
+						"MinimizeDetails": true,
+						"ReportFileType": "XML",
+						"Title": "Security Report"
+					}
+				}
+			}
+		],
+		"custom": [
+			{
+				"name": "thirdparty",
+				"handler": "launcher"
+			}
+		]
+	}	
+}

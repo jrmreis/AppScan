@@ -1,0 +1,127 @@
+# The options to sevSecGw are highIssues, mediumIssues, lowIssues and totalIssues.
+# maxIssuesAllowed is the amount of issues in selected sevSecGw.
+# appId is application id located in ASoC.
+# appscanPresenceId is AppScan Presence ID that will be used to reach out URL. Keep 00000000-0000-0000-0000-000000000000 if there is no AppScanPresence.
+# If there is login.dast.config and manualexplorer.dast.config in repository it will be uploaded and used in Scan otherwise will be ignored.
+variables:
+  asocApiKeyId: xxxxxxxxxxxxxxxx
+  asocApiKeySecret: xxxxxxxxxxxxxxxx
+  appId: xxxxxxxxxxxxxxxx
+  appscanPresenceId: 00000000-0000-0000-0000-000000000000
+  urlTarget: https://demo.testfire.net
+  loginDastConfig: login.dast.config
+  manualExplorerDastConfig: manualexplorer.dast.config
+  sevSecGw: criticalIssues
+  maxIssuesAllowed: 10
+
+stages:
+- scan-dast
+
+scan-dast-job:
+  stage: scan-dast
+  tags:
+    - appscan
+  script:
+
+# Authenticate and get token
+  - $asocApiToken=($(Invoke-WebRequest -Method "POST" -Headers @{"accept"="application/json"} -ContentType "application/json" -Body ("{`"KeyId`":`"$asocApiKeyId`", `"KeySecret`":`"$asocApiKeySecret`"}") -Uri "https://cloud.appscan.com/api/V2/Account/ApiKeyLogin").content | ConvertFrom-Json).token
+
+# Check if there is login file in root repository folder and upload to ASoC
+  - >
+    if ((Test-Path -Path $loginDastConfig -PathType Leaf)){
+      $loginDastConfigId=((Invoke-WebRequest -Method Post -Form @{fileToUpload=$(Get-Item -Path "$loginDastConfig")} -WebSession $session -Headers @{"accept"="application/json";"authorization"="Bearer $asocApiToken"} -Uri 'https://cloud.appscan.com/api/v2/FileUpload').content | ConvertFrom-Json).FileId;
+      write-host "$loginDastConfig exists. So it will be uploaded to the Job and will be used to Authenticate in the URL target during tests.";
+      write-host "The FileId uploaded is $loginDastConfigId."
+    }
+    else{
+      write-host "Login file not identified. "
+    }
+# Check if there is manual explorer file in root repository folder and upload to ASoC  
+  - >
+    if ((Test-Path -Path $manualExplorerDastConfig -PathType Leaf)){
+      $manualExplorerDastConfigId=((Invoke-WebRequest -Method Post -Form @{fileToUpload=$(Get-Item -Path "$manualExplorerDastConfig")} -WebSession $session -Headers @{"accept"="application/json";"authorization"="Bearer $asocApiToken"} -Uri 'https://cloud.appscan.com/api/v2/FileUpload').content | ConvertFrom-Json).FileId;
+      write-host "$manualExplorerDastConfig exists. It will be uploaded to ASoC and will be used to navigate in the URL target during tests.";
+      write-host "The FileId uploaded is $manualExplorerDastConfigId."
+    }
+    else{
+      write-host "Manual Explorer file not identified."
+    }
+  - $scanName="$CI_PROJECT_NAME-$CI_JOB_ID"
+ 
+ # Start scan. If there is manual explorer file, start the scan  in test only mode otherwise full scan
+  - >
+    if ((Test-Path -Path $manualExplorerDastConfig -PathType Leaf)){
+      $scanId=((Invoke-WebRequest -Method "POST" -Headers @{"accept"="application/json";"authorization"="Bearer $asocApiToken"} -ContentType "application/json" -Body ("{`"StartingUrl`":`"$urlTarget`",`"TestOnly`":true,`"ExploreItems`":[{`"FileId`":`"$manualExplorerDastConfigId`"}],`"LoginUser`":`"`",`"LoginPassword`":`"`",`"TestPolicy`":`"Default.policy`",`"ExtraField`":`"`",`"ScanType`":`"Staging`",`"PresenceId`":`"$appscanPresenceId`",`"IncludeVerifiedDomains`":false,`"HttpAuthUserName`":`"`",`"HttpAuthPassword`":`"`",`"HttpAuthDomain`":`"`",`"TestOptimizationLevel`":`"Fastest`",`"LoginSequenceFileId`":`"$loginDastConfigId`",`"ThreadNum`":10,`"ConnectionTimeout`":null,`"UseAutomaticTimeout`":true,`"MaxRequestsIn`":null,`"MaxRequestsTimeFrame`":null,`"ScanName`":`"DAST $scanName $urlTarget`",`"EnableMailNotification`":false,`"Locale`":`"en`",`"AppId`":`"$appId`",`"Execute`":true,`"Personal`":false,`"ClientType`":`"user-site`",`"Comment`":null,`"FullyAutomatic`":false,`"RecurrenceRule`":null,`"RecurrenceStartDate`":null}") -uri 'https://cloud.appscan.com/api/v2/Scans/DynamicAnalyzerWithFiles' | ConvertFrom-json).id);
+    write-host "Scan started with Manual Explorer and Test Only mode, scanId $scanId";
+    }
+    else{
+      $scanId=((Invoke-WebRequest -Method "POST" -Headers @{"accept"="application/json";"authorization"="Bearer $asocApiToken"} -ContentType "application/json" -Body ("{`"StartingUrl`":`"$urlTarget`",`"TestOnly`":false,`"ExploreItems`":[],`"LoginUser`":`"`",`"LoginPassword`":`"`",`"TestPolicy`":`"Default.policy`",`"ExtraField`":`"`",`"ScanType`":`"Staging`",`"PresenceId`":`"$appscanPresenceId`",`"IncludeVerifiedDomains`":false,`"HttpAuthUserName`":`"`",`"HttpAuthPassword`":`"`",`"HttpAuthDomain`":`"`",`"TestOptimizationLevel`":`"Fastest`",`"LoginSequenceFileId`":`"$loginDastConfigId`",`"ThreadNum`":10,`"ConnectionTimeout`":null,`"UseAutomaticTimeout`":true,`"MaxRequestsIn`":null,`"MaxRequestsTimeFrame`":null,`"ScanName`":`"DAST $scanName $urlTarget`",`"EnableMailNotification`":false,`"Locale`":`"en`",`"AppId`":`"$appId`",`"Execute`":true,`"Personal`":false,`"ClientType`":`"user-site`",`"Comment`":null,`"FullyAutomatic`":false,`"RecurrenceRule`":null,`"RecurrenceStartDate`":null}") -uri 'https://cloud.appscan.com/api/v2/Scans/DynamicAnalyzerWithFiles' | ConvertFrom-json).id);
+    write-host "Scan started, scanId $scanId";
+    }
+ 
+ # Check status scan and keep it in loop until Ready status.
+  - $scanStatus=(Invoke-WebRequest -Method "GET" -uri "https://cloud.appscan.com/api/v2/Scans/$scanId" -Headers @{"accept"="application/json";"authorization"="Bearer $asocApiToken"} | ConvertFrom-Json).LatestExecution.Status
+  - write-host $scanStatus
+  - >
+    while (("$scanStatus" -like "*Running*") -or ("$scanStatus" -like "*InQueue*")){
+      $scanStatus=(Invoke-WebRequest -Method "GET" -uri "https://cloud.appscan.com/api/v2/Scans/$scanId" -Headers @{"accept"="application/json";"authorization"="Bearer $asocApiToken"} | ConvertFrom-Json).LatestExecution.Status
+      write-host $scanStatus;
+      sleep 60
+    }
+  - write-host "Scan finished."
+  
+  # Request the report
+  - >  
+    $reportId=((Invoke-WebRequest -Method "POST" -Headers @{"accept"="application/json";"authorization"="Bearer $asocApiToken"} -ContentType "application/json" -Body ("{`"Configuration`":{`"Summary`":true,`"Details`":true,`"Discussion`":true,`"Overview`":true,`"TableOfContent`":true,`"Articles`":true,`"History`":true,`"Coverage`":true,`"MinimizeDetails`":true,`"ReportFileType`":`"HTML`",`"Title`":`"`",`"Notes`":`"`",`"Locale`":`"en`"},`"OdataFilter`":`"`",`"ApplyPolicies`":`"None`"}") -uri "https://cloud.appscan.com/api/v2/Reports/Security/Scan/$scanId" | ConvertFrom-json).id);
+  - write-host "Report Id $reportId."
+  
+  # Loop waiting download report
+  - $reportStatus=((Invoke-WebRequest -Method "GET" -Headers @{"accept"="text/xml";"authorization"="Bearer $asocApiToken"} -uri "https://cloud.appscan.com/api/V2/Reports/$reportId").content | ConvertFrom-Json).Status
+  - >
+    while ("$reportStatus" -notlike "*Ready*"){
+      $reportStatus=((Invoke-WebRequest -Method "GET" -Headers @{"accept"="text/xml";"authorization"="Bearer $asocApiToken"} -uri "https://cloud.appscan.com/api/V2/Reports/$reportId").content | ConvertFrom-Json).Status
+      write-host $reportStatus;
+      sleep 60
+    }
+  - write-host "Report generated."
+  - Invoke-WebRequest -Method "GET" -Headers @{"accept"="text/xml";"authorization"="Bearer $asocApiToken"} -uri "https://cloud.appscan.com/api/v2/Reports/Download/$reportId" -OutFile scan_report.html;
+
+  # Security gate
+  - $scanResult=((Invoke-WebRequest -Method "GET" -Headers @{"accept"="text/xml";"authorization"="Bearer $asocApiToken"} -uri "https://cloud.appscan.com/api/v2/Scans/$scanId").content | ConvertFrom-json);
+  - $criticalIssues=$scanResult.LatestExecution.NCriticalIssues
+  - $highIssues=$scanResult.LatestExecution.NHighIssues
+  - $mediumIssues=$scanResult.LatestExecution.NMediumIssues
+  - $lowIssues=$scanResult.LatestExecution.NLowIssues
+  - $infoIssues=$scanResult.LatestExecution.NInfoIssues
+  - $totalIssues=$scanResult.LatestExecution.NIssuesFound
+  - $maxIssuesAllowed = $maxIssuesAllowed -as [int]
+  
+  - write-host "There is $criticalIssues critical issues, $highIssues high issues, $mediumIssues medium issues, $lowIssues low issues and $infoIssues info issues."
+  - write-host "The company policy permit less than $maxIssuesAllowed $sevSecGw severity."
+  - >
+    if (( $criticalIssues -gt $maxIssuesAllowed ) -and ( "$sevSecGw" -eq "criticalIssues" )) {
+      write-host "Security Gate build failed";
+      exit 1
+    }
+    if (( $highIssues -gt $maxIssuesAllowed ) -and ( "$sevSecGw" -eq "highIssues" )) {
+      write-host "Security Gate build failed";
+      exit 1
+    }
+    if (( $mediumIssues -gt $maxIssuesAllowed ) -and ( "$sevSecGw" -eq "mediumIssues" )) {
+      write-host "Security Gate build failed";
+      exit 1
+    }
+    if (( $lowIssues -gt $maxIssuesAllowed ) -and ( "$sevSecGw" -eq "lowIssues" )) {
+      write-host "Security Gate build failed";
+      exit 1
+    }
+    if (( $totalIssues -gt $maxIssuesAllowed ) -and ( "$sevSecGw" -eq "totalIssues" )) {
+      write-host "Security Gate build failed";
+      exit 1
+    }
+  - write-host "Security Gate passed"
+  
+  artifacts:
+    when: always
+    paths:
+      - "*.html"

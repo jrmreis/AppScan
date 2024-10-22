@@ -1,0 +1,61 @@
+# Copyright 2023 HCL America
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+variables:
+  aseToken: C:\ProgramData\HCL\AppScanSource\config\ounceautod.token
+  aseHostname: xxxxxxxxxxxxx
+  aseAppName: $CI_PROJECT_NAME
+  aseApiKeyId: xxxxxxxxxxxxx
+  aseApiKeySecret: xxxxxxxxxxxxx
+  compiledArtifactFolder: none # when is "none" scan sourcecodeonly 
+  scanConfig: Normal scan
+  sevSecGw: highIssues
+  maxIssuesAllowed: 100
+# artifactFolder: $CI_PROJECT_DIR\build\libs 
+# artifactName: xxxxxxxxxxxxx.war
+
+stages:
+- scan-sast
+
+scan-sast-job:
+  stage: scan-sast
+  script:
+  - Invoke-WebRequest -Uri https://raw.githubusercontent.com/jrocia/Integration-AppScan-onprem-and-Gitlab/main/scripts/appscanase_create_application_ase.ps1 -OutFile appscanase_create_application_ase.ps1
+  - .\appscanase_create_application_ase.ps1
+
+  - Invoke-WebRequest -Uri https://raw.githubusercontent.com/jrocia/Integration-AppScan-onprem-and-Gitlab/main/scripts/appscansrc_create_config_scan_folder.ps1 -OutFile appscansrc_create_config_scan_folder.ps1
+  - .\appscansrc_create_config_scan_folder.ps1
+
+  - Invoke-WebRequest -Uri https://raw.githubusercontent.com/jrocia/Integration-AppScan-onprem-and-Gitlab/main/scripts/appscansrc_scan.ps1 -OutFile appscansrc_scan.ps1
+  - .\appscansrc_scan.ps1
+
+  - Invoke-WebRequest -Uri https://raw.githubusercontent.com/jrocia/Integration-AppScan-onprem-and-Gitlab/main/scripts/appscansrc_publish_assessment_to_enterprise.ps1 -OutFile appscansrc_publish_assessment_to_enterprise.ps1
+  - .\appscansrc_publish_assessment_to_enterprise.ps1
+
+  - Invoke-WebRequest -Uri https://raw.githubusercontent.com/jrocia/Integration-AppScan-onprem-and-Gitlab/main/scripts/appscanase_get_xml_report_from_enterprise.ps1 -OutFile appscanase_get_xml_report_from_enterprise.ps1
+  - .\appscanase_get_xml_report_from_enterprise.ps1
+
+  - Invoke-WebRequest -Uri https://raw.githubusercontent.com/jrocia/Integration-AppScan-onprem-and-Gitlab/main/scripts/appscanase_convert_ase_sast_xml_to_gitlab_json.ps1 -OutFile appscanase_convert_ase_sast_xml_to_gitlab_json.ps1
+  - .\appscanase_convert_ase_sast_xml_to_gitlab_json.ps1
+
+  - Invoke-WebRequest -Uri https://raw.githubusercontent.com/jrocia/Integration-AppScan-onprem-and-Gitlab/main/scripts/appscansrc_check_security_gate.ps1 -OutFile appscansrc_check_security_gate.ps1
+  - .\appscansrc_check_security_gate.ps1
+
+  artifacts:
+    when: always
+    paths:
+      - "*.ozasmt"
+      - "*.pdf"
+    reports:
+      sast: .\scan_report\gl-sast-report.json

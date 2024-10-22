@@ -1,0 +1,44 @@
+# Copyright 2023 HCL America
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+variables:
+  url: https://www.abcd.com
+  scanFile: $CI_PROJECT_DIR\$CI_PROJECT_NAME-$CI_JOB_ID.scan
+  reportXMLsevSec: $CI_PROJECT_DIR\$CI_PROJECT_NAME-$CI_JOB_ID-sevsec.xml
+  reportPDFFile: $CI_PROJECT_DIR\$CI_PROJECT_NAME-$CI_JOB_ID.pdf
+  loginDastConfig: $CI_PROJECT_DIR\dast.login
+  manualExploreDastConfig: $CI_PROJECT_DIR\manualexplore.exd
+  sevSecGw: highIssues
+  maxIssuesAllowed: 10
+
+stages:
+  - scan-dast
+
+scan-dast-job:
+  stage: scan-dast
+  script:
+
+    - Invoke-WebRequest -Uri https://raw.githubusercontent.com/jrocia/Integration-AppScan-onprem-and-Gitlab/main/scripts/appscanstd_scan.ps1 -OutFile appscanstd_scan.ps1
+    - .\appscanstd_scan.ps1
+
+    - Invoke-WebRequest -Uri https://raw.githubusercontent.com/jrocia/Integration-AppScan-onprem-and-Gitlab/main/scripts/appscanstd_generate_pdf_report.ps1 -OutFile appscanstd_generate_pdf_report.ps1
+    - .\appscanstd_generate_pdf_report.ps1
+
+    - Invoke-WebRequest -Uri https://raw.githubusercontent.com/jrocia/Integration-AppScan-onprem-and-Gitlab/main/scripts/appscanstd_check_security_gate.ps1 -OutFile appscanstd_check_security_gate.ps1
+    - .\appscanstd_check_security_gate.ps1
+
+  artifacts:
+    when: always
+    paths:
+      - "*.pdf"
